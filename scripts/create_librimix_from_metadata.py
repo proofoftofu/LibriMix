@@ -15,7 +15,7 @@ RATE = 16000
 parser = argparse.ArgumentParser()
 parser.add_argument('--librispeech_dir', type=str, required=True,
                     help='Path to librispeech root directory')
-parser.add_argument('--wham_dir', type=str, required=True,
+parser.add_argument('--wham_dir', type=str, default=None,
                     help='Path to wham_noise root directory')
 parser.add_argument('--metadata_dir', type=str, required=True,
                     help='Path to the LibriMix metadata directory')
@@ -23,6 +23,8 @@ parser.add_argument('--librimix_outdir', type=str, default=None,
                     help='Path to the desired dataset root directory')
 parser.add_argument('--n_src', type=int, required=True,
                     help='Number of sources in mixtures')
+parser.add_argument('--subsets', nargs='+', default=None,
+                    help='Optional subset filter, e.g. --subsets train-100')
 parser.add_argument('--freqs', nargs='+', default=['8k', '16k'],
                     help='--freqs 16k 8k will create 2 directories wav8k '
                          'and wav16k')
@@ -49,6 +51,9 @@ def main(args):
     # Get the desired frequencies
     freqs = args.freqs
     freqs = [freq.lower() for freq in freqs]
+    subsets = args.subsets
+    if subsets is not None:
+        subsets = [subset.lower() for subset in subsets]
     # Get the desired modes
     modes = args.modes
     modes = [mode.lower() for mode in modes]
@@ -56,15 +61,18 @@ def main(args):
     types = [t.lower() for t in types]
     # Get the number of sources
     create_librimix(librispeech_dir, wham_dir, librimix_outdir, metadata_dir,
-                    freqs, n_src, modes, types)
+                    freqs, n_src, modes, types, subsets)
 
 
 def create_librimix(librispeech_dir, wham_dir, out_dir, metadata_dir,
-                    freqs, n_src, modes, types):
+                    freqs, n_src, modes, types, subsets):
     """ Generate sources mixtures and saves them in out_dir"""
     # Get metadata files
     md_filename_list = [file for file in os.listdir(metadata_dir)
                         if 'info' not in file]
+    if subsets:
+        md_filename_list = [file for file in md_filename_list
+                            if any(subset in file.lower() for subset in subsets)]
     # Create all parts of librimix
     for md_filename in md_filename_list:
         csv_path = os.path.join(metadata_dir, md_filename)
@@ -154,9 +162,10 @@ def process_utterances(md_file, librispeech_dir, wham_dir, freq, mode, subdirs,
 
 def process_utterance(n_src, librispeech_dir, wham_dir, freq, mode, subdirs, dir_path, row):
     res = []
+    needs_noise = any(subdir != 'mix_clean' for subdir in subdirs[n_src:])
     # Get sources and mixture infos
     mix_id, gain_list, sources = read_sources(row, n_src, librispeech_dir,
-                                              wham_dir)
+                                              wham_dir, needs_noise)
     # Transform sources
     transformed_sources = transform_sources(sources, freq, mode, gain_list)
     # Write the sources and get their paths
@@ -165,8 +174,10 @@ def process_utterance(n_src, librispeech_dir, wham_dir, freq, mode, subdirs, dir
                                          subdirs, dir_path, freq,
                                          n_src)
     # Write the noise and get its path
-    abs_noise_path = write_noise(mix_id, transformed_sources, dir_path,
-                                 freq)
+    abs_noise_path = None
+    if needs_noise:
+        abs_noise_path = write_noise(mix_id, transformed_sources, dir_path,
+                                     freq)
     # Mixtures are different depending on the subdir
     for subdir in subdirs:
         if subdir == 'mix_clean':
@@ -227,7 +238,7 @@ def create_empty_mixture_md(n_src, subdir):
     return mixture_dataframe
 
 
-def read_sources(row, n_src, librispeech_dir, wham_dir):
+def read_sources(row, n_src, librispeech_dir, wham_dir, needs_noise):
     """ Get sources and info to mix the sources """
     # Get info about the mixture
     mixture_id = row['mixture_ID']
@@ -244,17 +255,20 @@ def read_sources(row, n_src, librispeech_dir, wham_dir):
         if max_length < len(source):
             max_length = len(source)
         sources_list.append(source)
-    # Read the noise
-    noise_path = os.path.join(wham_dir, row['noise_path'])
-    noise, _ = sf.read(noise_path, dtype='float32', stop=max_length)
-    # if noises have 2 channels take the first
-    if len(noise.shape) > 1:
-        noise = noise[:, 0]
-    # if noise is too short extend it
-    if len(noise) < max_length:
-        noise = extend_noise(noise, max_length)
-    sources_list.append(noise)
-    gain_list.append(row['noise_gain'])
+    if needs_noise:
+        if wham_dir is None:
+            raise ValueError('wham_dir is required when generating noisy mixes')
+        # Read the noise
+        noise_path = os.path.join(wham_dir, row['noise_path'])
+        noise, _ = sf.read(noise_path, dtype='float32', stop=max_length)
+        # if noises have 2 channels take the first
+        if len(noise.shape) > 1:
+            noise = noise[:, 0]
+        # if noise is too short extend it
+        if len(noise) < max_length:
+            noise = extend_noise(noise, max_length)
+        sources_list.append(noise)
+        gain_list.append(row['noise_gain'])
 
     return mixture_id, gain_list, sources_list
 
