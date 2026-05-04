@@ -71,8 +71,16 @@ def create_librimix(librispeech_dir, wham_dir, out_dir, metadata_dir,
     md_filename_list = [file for file in os.listdir(metadata_dir)
                         if 'info' not in file]
     if subsets:
+        subset_aliases = []
+        for subset in subsets:
+            normalized = subset.lower()
+            subset_aliases.append(normalized)
+            subset_aliases.append(normalized.replace('train-', 'train-clean-'))
+            subset_aliases.append(normalized.replace('dev', 'dev-clean'))
+            subset_aliases.append(normalized.replace('test', 'test-clean'))
+        subset_aliases = list(dict.fromkeys(subset_aliases))
         md_filename_list = [file for file in md_filename_list
-                            if any(subset in file.lower() for subset in subsets)]
+                            if any(alias in file.lower() for alias in subset_aliases)]
     # Create all parts of librimix
     for md_filename in md_filename_list:
         csv_path = os.path.join(metadata_dir, md_filename)
