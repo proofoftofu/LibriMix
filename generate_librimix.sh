@@ -16,19 +16,46 @@ function LibriSpeech_clean100() {
 	fi
 }
 
+function LibriSpeech_dev_clean() {
+	if ! test -e $librispeech_dir/dev-clean; then
+		echo "Download LibriSpeech/dev-clean into $storage_dir"
+		wget -c --tries=0 --read-timeout=20 http://www.openslr.org/resources/12/dev-clean.tar.gz -P $storage_dir
+		tar -xzf $storage_dir/dev-clean.tar.gz -C $storage_dir
+		rm -rf $storage_dir/dev-clean.tar.gz
+	fi
+}
+
+function LibriSpeech_test_clean() {
+	if ! test -e $librispeech_dir/test-clean; then
+		echo "Download LibriSpeech/test-clean into $storage_dir"
+		wget -c --tries=0 --read-timeout=20 http://www.openslr.org/resources/12/test-clean.tar.gz -P $storage_dir
+		tar -xzf $storage_dir/test-clean.tar.gz -C $storage_dir
+		rm -rf $storage_dir/test-clean.tar.gz
+	fi
+}
+
 LibriSpeech_clean100 &
+LibriSpeech_dev_clean &
+LibriSpeech_test_clean &
 
 wait
 
 # Path to python
-python_path=python
+if command -v python >/dev/null 2>&1; then
+  python_path=python
+elif command -v python3 >/dev/null 2>&1; then
+  python_path=python3
+else
+  echo "Neither python nor python3 was found in PATH."
+  exit 1
+fi
 
 metadata_dir=metadata/Libri2Mix
 $python_path scripts/create_librimix_from_metadata.py --librispeech_dir $librispeech_dir \
   --metadata_dir $metadata_dir \
   --librimix_outdir $librimix_outdir \
   --n_src 2 \
-  --subsets train-100 \
+  --subsets train-100 dev test \
   --freqs 8k \
   --modes min \
   --types mix_clean
