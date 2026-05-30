@@ -16,6 +16,15 @@ function LibriSpeech_clean100() {
 	fi
 }
 
+function LibriSpeech_clean360() {
+	if ! test -e $librispeech_dir/train-clean-360; then
+		echo "Download LibriSpeech/train-clean-360 into $storage_dir"
+		wget -c --tries=0 --read-timeout=20 http://www.openslr.org/resources/12/train-clean-360.tar.gz -P $storage_dir
+		tar -xzf $storage_dir/train-clean-360.tar.gz -C $storage_dir
+		rm -rf $storage_dir/train-clean-360.tar.gz
+	fi
+}
+
 function LibriSpeech_dev_clean() {
 	if ! test -e $librispeech_dir/dev-clean; then
 		echo "Download LibriSpeech/dev-clean into $storage_dir"
@@ -35,6 +44,7 @@ function LibriSpeech_test_clean() {
 }
 
 LibriSpeech_clean100 &
+LibriSpeech_clean360 &
 LibriSpeech_dev_clean &
 LibriSpeech_test_clean &
 
@@ -55,7 +65,7 @@ $python_path scripts/create_librimix_from_metadata.py --librispeech_dir $librisp
   --metadata_dir $metadata_dir \
   --librimix_outdir $librimix_outdir \
   --n_src 2 \
-  --subsets train-100 dev test \
+  --subsets train-100 train-360 dev test \
   --freqs 8k \
   --modes min \
   --types mix_clean
